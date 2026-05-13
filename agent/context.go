@@ -104,6 +104,15 @@ type InvocationContext interface {
 	// per-node context wrapper.
 	TriggeredBy() string
 
+	// ResumedInput returns the user-supplied response payload for
+	// the given InterruptID, when the current activation is a
+	// re-entry resume of a previously-paused workflow node. Returns
+	// (nil, false) on the initial activation, outside a workflow,
+	// or when this activation is a handoff resume rather than a
+	// re-entry. Used by re-entry-mode nodes (NodeConfig.RerunOnResume
+	// = true) to act on the human reply that unblocked them.
+	ResumedInput(interruptID string) (any, bool)
+
 	// WithContext returns a new instance of the context with overridden embedded context.
 	// NOTE: This is a temporary solution and will be removed later. The proper solution
 	// we plan is to stop embedding go context in adk context types and split it.

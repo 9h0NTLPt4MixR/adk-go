@@ -100,21 +100,37 @@ func (w *Workflow) Resume(
 				continue
 			}
 
+			// Capture the asker's original input before clearing
+			// PendingRequest; re-entry mode re-runs the node with
+			// it.
+			originalInput := ns.Input
+			interruptID := ns.PendingRequest.InterruptID
+
 			// Consume PendingRequest before scheduling. A duplicate
 			// Resume with the same InterruptID will skip this node
 			// because PendingRequest is now nil.
 			ns.PendingRequest = nil
 			ns.Status = NodePending
 
-			// Handoff mode: schedule each successor with the
-			// response as its input, exactly as if the asker had
-			// emitted it as output. Reuses findSuccessors so
-			// routing, fan-out and fan-in invariants apply
-			// uniformly. (No routing event is supplied, so a
-			// router-style handoff target falls back to its
-			// Default route or dead-ends.)
-			for _, succ := range findSuccessors(s.graph, node, resp, nil) {
-				s.scheduleNode(succ.node, succ.input, succ.triggeredBy)
+			if node.Config().RerunOnResumeOr(false) {
+				// Re-entry mode: re-activate the asker with its
+				// original input; the response is delivered via
+				// nctx.ResumedInput(InterruptID), not via the
+				// input parameter. Successors fire only when the
+				// re-entry activation produces an output.
+				resumeInputs := map[string]any{interruptID: resp}
+				s.scheduleResumedNode(node, originalInput, ns.TriggeredBy, resumeInputs)
+			} else {
+				// Handoff mode: schedule each successor with the
+				// response as its input, exactly as if the asker
+				// had emitted it as output. Reuses findSuccessors
+				// so routing, fan-out and fan-in invariants apply
+				// uniformly. (No routing event is supplied, so a
+				// router-style handoff target falls back to its
+				// Default route or dead-ends.)
+				for _, succ := range findSuccessors(s.graph, node, resp, nil) {
+					s.scheduleNode(succ.node, succ.input, succ.triggeredBy)
+				}
 			}
 			scheduled++
 		}
