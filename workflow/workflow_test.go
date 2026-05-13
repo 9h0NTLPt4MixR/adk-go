@@ -370,7 +370,7 @@ func TestWorkflowRouting(t *testing.T) {
 				return []Edge{
 					{From: Start, To: x},
 					{From: x, To: a, Route: StringRoute("branchA")},
-					{From: x, To: b, Route: (Default)},
+					{From: x, To: b, Route: Default},
 				}
 			},
 			expectedExec: []string{"B"},
@@ -394,7 +394,7 @@ func TestWorkflowRouting(t *testing.T) {
 				return []Edge{
 					{From: Start, To: x},
 					{From: x, To: a},
-					{From: x, To: b, Route: (Default)},
+					{From: x, To: b, Route: Default},
 				}
 			},
 			expectedExec: []string{"A", "B"},
