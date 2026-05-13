@@ -174,21 +174,38 @@ func (s *startNode) Run(ctx agent.InvocationContext, input any) iter.Seq2[*sessi
 // Workflow manages the workflow graph execution.
 type Workflow struct {
 	graph *graph
+
+	// name namespaces the workflow's RunState key in session.State.
+	// Empty disables persistence. Set at construction by New.
+	name string
 }
 
-// New creates a new Workflow engine with the given edges.
-func New(edges []Edge) (*Workflow, error) {
+// New creates a new Workflow engine with the given name and edges.
+// The name is used to namespace the workflow's persisted RunState
+// in session.State, so a single session can hold multiple workflows
+// without collision. An empty name disables persistence: the
+// workflow runs normally but its RunState is not saved across
+// invocations, so Resume on a follow-up turn will find nothing to
+// resume from.
+func New(name string, edges []Edge) (*Workflow, error) {
 	if err := validateNodes(edges); err != nil {
 		return nil, err
 	}
-	return &Workflow{graph: newGraph(edges)}, nil
+	return &Workflow{graph: newGraph(edges), name: name}, nil
 }
 
-// Run drives the workflow to completion (or to a graceful pause in
-// later milestones). It returns an iter.Seq2 that yields events
-// from per-node goroutines in arrival order; the caller may break
-// from the range loop at any point and the engine will cancel all
-// in-flight nodes before returning.
+// Name returns the workflow's persistence-namespacing name as set
+// by New. Empty when the workflow is anonymous (does not persist
+// its RunState).
+func (w *Workflow) Name() string {
+	return w.name
+}
+
+// Run drives the workflow to completion or to a graceful pause
+// when any node enters NodeWaiting. It returns an iter.Seq2 that
+// yields events from per-node goroutines in arrival order; the
+// caller may break from the range loop at any point and the
+// engine will cancel all in-flight nodes before returning.
 //
 // The engine model: each scheduled node runs in its own goroutine
 // pushing events into a buffered channel. A single consumer
@@ -210,7 +227,43 @@ func (w *Workflow) Run(ctx agent.InvocationContext) iter.Seq2[*session.Event, er
 
 		// All goroutines have returned; ensure no leak.
 		s.wg.Wait()
+
+		// Persist the run state so a follow-up turn can call
+		// Workflow.Resume with the recovered NodeWaiting set.
+		// Yielded as a session.Event so the runner's AppendEvent
+		// path propagates the StateDelta into the session store;
+		// a direct State.Set call would update only the live copy
+		// and never reach storage.
+		yieldRunStateEvent(ctx, w.name, s.state, yield)
 	}
+}
+
+// yieldRunStateEvent emits a session.Event carrying the workflow's
+// serialised RunState in Actions.StateDelta. No-op when the
+// workflow is anonymous (no name → no persistence) or when the
+// caller has stopped consuming the iterator.
+//
+// The state is published as a StateDelta event (rather than a
+// direct session.State().Set()) because session backends apply
+// state mutations only when they observe them on
+// Event.Actions.StateDelta during AppendEvent; a Set on the live
+// State map updates the per-invocation copy but is not propagated
+// to storage.
+func yieldRunStateEvent(
+	ctx agent.InvocationContext,
+	workflowName string,
+	state *RunState,
+	yield func(*session.Event, error) bool,
+) {
+	ev, err := NewRunStateEvent(ctx.InvocationID(), workflowName, state)
+	if err != nil {
+		yield(nil, err)
+		return
+	}
+	if ev == nil {
+		return
+	}
+	yield(ev, nil)
 }
 
 // userInput extracts the workflow's seed input from the
