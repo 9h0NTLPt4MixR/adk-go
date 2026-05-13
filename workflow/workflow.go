@@ -172,8 +172,19 @@ func (s *startNode) Run(ctx agent.InvocationContext, input any) iter.Seq2[*sessi
 }
 
 // Workflow manages the workflow graph execution.
+//
+// Production code typically does not construct a *Workflow
+// directly; use workflowagent.New (in package
+// google.golang.org/adk/agent/workflowagent) instead, which wraps
+// a workflow as an agent.Agent and handles the human-in-the-loop
+// resume dispatch automatically.
 type Workflow struct {
 	graph *graph
+
+	// name is the namespace used by NewRunStateEvent and
+	// LoadRunState to key RunState in session.State. Empty
+	// disables persistence; set by SetName.
+	name string
 }
 
 // New creates a new Workflow engine with the given edges.
@@ -184,11 +195,30 @@ func New(edges []Edge) (*Workflow, error) {
 	return &Workflow{graph: newGraph(edges)}, nil
 }
 
-// Run drives the workflow to completion (or to a graceful pause in
-// later milestones). It returns an iter.Seq2 that yields events
-// from per-node goroutines in arrival order; the caller may break
-// from the range loop at any point and the engine will cancel all
-// in-flight nodes before returning.
+// SetName assigns a stable name to the workflow. The name is used
+// to namespace the workflow's persisted RunState in session.State,
+// so a single session can hold multiple workflows without collision.
+// An unnamed workflow does not persist its RunState across
+// invocations.
+//
+// Used by workflowagent.New, which sets the workflow's name to
+// match the wrapping agent's name.
+func (w *Workflow) SetName(name string) {
+	w.name = name
+}
+
+// Name returns the workflow's persistence-namespacing name as set
+// by SetName. Empty when the workflow is anonymous (does not
+// persist its RunState).
+func (w *Workflow) Name() string {
+	return w.name
+}
+
+// Run drives the workflow to completion or to a graceful pause
+// when any node enters NodeWaiting. It returns an iter.Seq2 that
+// yields events from per-node goroutines in arrival order; the
+// caller may break from the range loop at any point and the
+// engine will cancel all in-flight nodes before returning.
 //
 // The engine model: each scheduled node runs in its own goroutine
 // pushing events into a buffered channel. A single consumer
@@ -210,7 +240,49 @@ func (w *Workflow) Run(ctx agent.InvocationContext) iter.Seq2[*session.Event, er
 
 		// All goroutines have returned; ensure no leak.
 		s.wg.Wait()
+
+		// Persist the run state so a follow-up turn can call
+		// Workflow.Resume with the recovered NodeWaiting set.
+		// Yielded as a session.Event so the runner's AppendEvent
+		// path propagates the StateDelta into the session store;
+		// a direct State.Set call would update only the live copy
+		// and never reach storage.
+		yieldRunStateEvent(ctx, w.name, s.state, yield)
 	}
+}
+
+// yieldRunStateEvent emits a session.Event carrying the workflow's
+// serialised RunState in Actions.StateDelta. No-op when the
+// workflow is anonymous (no name → no persistence) or when the
+// caller has stopped consuming the iterator.
+//
+// State persistence is the runner's responsibility: the caller
+// (runner.Runner) appends every yielded non-partial event via
+// session.Service.AppendEvent, which is the contract surface for
+// applying state deltas. Direct session.State().Set() from inside
+// the agent would not propagate to persistent backends — see
+// b/492152475 and https://adk.dev/sessions/state/#a-warning-about-direct-state-modification.
+//
+// In-process consumers that drive Workflow.Run/Resume without a
+// runner are responsible for applying the yielded event's
+// Actions.StateDelta themselves; see the test helper
+// applyStateDelta in agent/workflowagent for the canonical
+// pattern.
+func yieldRunStateEvent(
+	ctx agent.InvocationContext,
+	workflowName string,
+	state *RunState,
+	yield func(*session.Event, error) bool,
+) {
+	ev, err := NewRunStateEvent(ctx.InvocationID(), workflowName, state)
+	if err != nil {
+		yield(nil, err)
+		return
+	}
+	if ev == nil {
+		return
+	}
+	yield(ev, nil)
 }
 
 // userInput extracts the workflow's seed input from the
