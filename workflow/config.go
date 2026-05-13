@@ -81,6 +81,25 @@ type NodeConfig struct {
 	Timeout time.Duration
 }
 
+// RerunOnResumeOr returns the resolved RerunOnResume flag,
+// substituting fallback when the field is nil. Used by the
+// scheduler to decide between handoff and re-entry resume modes.
+func (c NodeConfig) RerunOnResumeOr(fallback bool) bool {
+	if c.RerunOnResume == nil {
+		return fallback
+	}
+	return *c.RerunOnResume
+}
+
+// WaitForOutputOr returns the resolved WaitForOutput flag,
+// substituting fallback when the field is nil.
+func (c NodeConfig) WaitForOutputOr(fallback bool) bool {
+	if c.WaitForOutput == nil {
+		return fallback
+	}
+	return *c.WaitForOutput
+}
+
 // RetryConfig defines the parameters for retrying a failed node.
 //
 // Recommended construction is via DefaultRetryConfig and override
