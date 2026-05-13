@@ -39,6 +39,12 @@ func (m MockSession) ID() string {
 	return "test-session-id"
 }
 
+// State returns nil; the workflow persistence helpers handle a nil
+// session.State by treating the session as non-persisting.
+func (m MockSession) State() session.State {
+	return nil
+}
+
 // MockInvocationContext is a minimal implementation of agent.InvocationContext for testing.
 type MockInvocationContext struct {
 	context.Context
@@ -134,22 +140,26 @@ func TestWorkflowAgent(t *testing.T) {
 	events := myWorkflow.Run(mockCtx)
 
 	var lastOutput any
-	count := 0
+	nodeEvents := 0
 	for ev, err := range events {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		count++
 
 		if ev.Actions.StateDelta != nil {
 			if out, ok := ev.Actions.StateDelta["output"]; ok {
 				lastOutput = out
+				nodeEvents++
 			}
 		}
 	}
 
-	if count != 2 {
-		t.Errorf("expected 2 events, got %d", count)
+	// Two node events, each carrying StateDelta["output"]. The
+	// run state checkpoint emitted at the end of Workflow.Run
+	// also carries StateDelta but under the workflow-namespaced
+	// key, so it does not increment nodeEvents.
+	if nodeEvents != 2 {
+		t.Errorf("expected 2 node-output events, got %d", nodeEvents)
 	}
 
 	if lastOutput != "HELLO done" {
