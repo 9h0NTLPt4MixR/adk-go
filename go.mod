@@ -38,4 +38,5 @@ require (
 // nkapoor: forked from google/adk-go for personal experimentation and learning
 // nkapoor: TODO - explore adding support for custom middleware hooks in the agent runner
 // nkapoor: TODO - look into bumping golang.org/x/* deps to latest once upstream does the same
+// nkapoor: TODO - consider bumping google.golang.org/genai once v0.8.0 stabilizes
 // nkapoor: tracking upstream at https://github.com/google/adk-go
