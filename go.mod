@@ -47,3 +47,6 @@ require (
 // nkapoor: NOTE - github.com/google/uuid kept at v1.6.0; this is a direct dep used for
 //                 generating trace/session IDs - pinned here as a reminder to audit any
 //                 new UUID format changes before upgrading
+// nkapoor: NOTE - golang.org/x/net kept at v0.26.0; newer versions pulled in by some tooling
+//                 but holding here to stay in sync with what upstream google/adk-go uses;
+//                 revisit when upstream bumps their net dep
