@@ -42,3 +42,5 @@ require (
 // nkapoor: tracking upstream at https://github.com/google/adk-go
 // nkapoor: NOTE - golang.org/x/crypto kept at v0.24.0 intentionally; v0.25.0 had a subtle
 //                 behavioral change in x/crypto/ssh that broke one of my local test setups
+// nkapoor: NOTE - google.golang.org/grpc kept at v1.64.0; v1.65.0 introduced a change in
+//                 keepalive defaults that caused flaky connections in my local dev environment
