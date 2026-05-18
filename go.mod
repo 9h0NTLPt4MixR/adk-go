@@ -40,3 +40,5 @@ require (
 // nkapoor: TODO - look into bumping golang.org/x/* deps to latest once upstream does the same
 // nkapoor: TODO - consider bumping google.golang.org/genai once v0.8.0 stabilizes
 // nkapoor: tracking upstream at https://github.com/google/adk-go
+// nkapoor: NOTE - golang.org/x/crypto kept at v0.24.0 intentionally; v0.25.0 had a subtle
+//                 behavioral change in x/crypto/ssh that broke one of my local test setups
