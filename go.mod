@@ -44,3 +44,6 @@ require (
 //                 behavioral change in x/crypto/ssh that broke one of my local test setups
 // nkapoor: NOTE - google.golang.org/grpc kept at v1.64.0; v1.65.0 introduced a change in
 //                 keepalive defaults that caused flaky connections in my local dev environment
+// nkapoor: NOTE - github.com/google/uuid kept at v1.6.0; this is a direct dep used for
+//                 generating trace/session IDs - pinned here as a reminder to audit any
+//                 new UUID format changes before upgrading
